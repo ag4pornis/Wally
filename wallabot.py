@@ -1,4 +1,4 @@
-import sqlite3, time, json
+import sqlite3, time, json, html, re
 from curl_cffi import requests
 import os
 
@@ -57,11 +57,54 @@ def precio(it):
     except (TypeError, ValueError):
         return None
 
-def enviar(texto):
+def enviar(texto, formato=None):
+    datos = {"chat_id": CHAT_ID, "text": texto}
+    if formato:
+        datos["parse_mode"] = formato
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": texto}, timeout=30,
+        json=datos, timeout=30,
     )
+
+def tiempo(it):
+    ms = it.get("created_at")
+    if not ms:
+        return "desconocido"
+    m = max(0, int((time.time() * 1000 - ms) / 60000))
+    if m < 60:
+        return f"hace {m} min"
+    if m < 1440:
+        return f"hace {m // 60} h"
+    return f"hace {m // 1440} d"
+
+def enviar_anuncio(it, p, b, link):
+    loc = it.get("location") or {}
+    ciudad = ", ".join(x for x in (loc.get("city"), loc.get("region")) if x) or "?"
+    sh = it.get("shipping") or {}
+    envio = "Disponible" if sh.get("item_is_shippable") and sh.get("user_allows_shipping") else "No"
+    reservado = " (RESERVADO)" if (it.get("reserved") or {}).get("flag") else ""
+    texto = (
+        f"🚨 <b>Nuevo producto</b>{reservado}\n\n"
+        f"📝 <b>{html.escape(it.get('title') or '')}</b>\n"
+        f"💰 Precio: {p} €\n"
+        f"📍 Ubicación: {html.escape(ciudad)}\n"
+        f"📦 Envío: {envio}\n"
+        f"⏱️ Publicado: {tiempo(it)}\n\n"
+        f"🏷️ Alerta: {html.escape(b['q'])}"
+    )
+    botones = {"inline_keyboard": [[{"text": "🔗 Ver producto", "url": link}]]}
+    imgs = it.get("images") or []
+    foto = imgs[0]["urls"].get("big") if imgs else None
+    api = f"https://api.telegram.org/bot{TOKEN}"
+    if foto:
+        r = requests.post(f"{api}/sendPhoto", json={
+            "chat_id": CHAT_ID, "photo": foto, "caption": texto,
+            "parse_mode": "HTML", "reply_markup": botones}, timeout=30)
+        if r.status_code == 200:
+            return
+    requests.post(f"{api}/sendMessage", json={
+        "chat_id": CHAT_ID, "text": texto,
+        "parse_mode": "HTML", "reply_markup": botones}, timeout=30)
 
 enviar("Bot de Wallapop arrancado")
 
@@ -107,24 +150,33 @@ while True:
                 c["silenciosos"] += 1
                 continue
             link = f"https://es.wallapop.com/item/{it.get('web_slug') or iid}"
-            enviar(f"{it.get('title')}\n{p} €\n{link}")
-            c["enviados"] += 1
+            try:
+                enviar_anuncio(it, p, b, link)
+                c["enviados"] += 1
+            except Exception as e:
+                print("Error enviando:", e)
             time.sleep(1)
 
+        pal = ", ".join(f"{html.escape(k)} ×{v}" for k, v in palabras.items())
         resumen = (
-            f"== {b['q']} ==\n"
-            f"Leídos: {len(items)}\n"
-            f"  Ya vistos (no se reenvían): {c['vistos']}\n"
-            f"  Nuevos: {c['nuevos']}\n"
-            f"    Excluidos por palabra: {c['excluidos']} {palabras or ''}\n"
-            f"    Excluidos por precio bajo (< min): {c['bajo']}\n"
-            f"    Excluidos por precio alto (> max): {c['alto']}\n"
-            f"    Memorizados sin avisar (primera pasada): {c['silenciosos']}\n"
-            f"    ENVIADOS a Telegram: {c['enviados']}"
+            f"📊 <b>Resumen · {html.escape(b['q'])}</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"👀 Leídos: {len(items)}\n"
+            f"♻️ Ya vistos: {c['vistos']}\n"
+            f"🆕 Nuevos: {c['nuevos']}\n\n"
+            f"🚫 <b>Descartados</b>\n"
+            f"   • Por palabra: {c['excluidos']}" + (f" ({pal})" if pal else "") + "\n"
+            f"   • Precio bajo: {c['bajo']}\n"
+            f"   • Precio alto: {c['alto']}\n"
+            f"🔇 Memorizados sin avisar: {c['silenciosos']}\n\n"
+            f"✅ <b>Enviados: {c['enviados']}</b>"
         )
-        print("\n" + resumen)
+        print("\n" + html.unescape(re.sub(r"<[^>]+>", "", resumen)))
         if c["nuevos"] > 0:
-            enviar(resumen)
+            try:
+                enviar(resumen, "HTML")
+            except Exception as e:
+                print("Error enviando resumen:", e)
         db.execute("INSERT OR IGNORE INTO iniciadas VALUES (?)", (b["q"],))
         db.commit()
     time.sleep(INTERVALO)
