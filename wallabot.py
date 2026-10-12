@@ -26,8 +26,12 @@ def cargar():
         return json.load(f)
 
 def buscar(b, paginas=1):
-    base = {"keywords": b["q"], "order_by": "newest",
+    # OJO: la API v3 NO admite order_by="newest" (devuelve casi nada).
+    # Valores válidos: most_relevance, closest, price_low_to_high, price_high_to_low.
+    # Usamos most_relevance y ordenamos por fecha en Python.
+    base = {"keywords": b["q"], "order_by": "most_relevance",
             "source": "search_box", "latitude": LAT, "longitude": LON,
+            "min_sale_price": b.get("min", 0),
             "max_sale_price": b["max"]}
     params = dict(base)
     items, ids = [], set()
@@ -47,6 +51,7 @@ def buscar(b, paginas=1):
             break
         params = {**base, "next_page": nxt}
         time.sleep(1)
+    items.sort(key=lambda it: it.get("created_at") or 0, reverse=True)
     return items
 
 def precio(it):
