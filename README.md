@@ -1,1 +1,1 @@
-excluirs solo excluye del titulo
+la funcion de "excluir" solo excluye en el titulo
