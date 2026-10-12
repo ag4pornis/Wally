@@ -1,4 +1,4 @@
-import sqlite3, time, json, html, re
+import sqlite3, time, json, html, re, panel
 from curl_cffi import requests
 import os
 
@@ -106,6 +106,7 @@ def enviar_anuncio(it, p, b, link):
         "chat_id": CHAT_ID, "text": texto,
         "parse_mode": "HTML", "reply_markup": botones}, timeout=30)
 
+panel.iniciar(TOKEN, CHAT_ID)
 enviar("Bot de Wallapop arrancado")
 
 while True:
@@ -115,6 +116,7 @@ while True:
         print("Error leyendo busquedas.json:", e)
         time.sleep(INTERVALO)
         continue
+    hubo = False
     for b in busquedas:
         primera = db.execute("SELECT 1 FROM iniciadas WHERE q=?", (b["q"],)).fetchone() is None
         try:
@@ -173,10 +175,13 @@ while True:
         )
         print("\n" + html.unescape(re.sub(r"<[^>]+>", "", resumen)))
         if c["nuevos"] > 0:
+            hubo = True
             try:
                 enviar(resumen, "HTML")
             except Exception as e:
                 print("Error enviando resumen:", e)
         db.execute("INSERT OR IGNORE INTO iniciadas VALUES (?)", (b["q"],))
         db.commit()
+    if hubo:
+        panel.menu()
     time.sleep(INTERVALO)
