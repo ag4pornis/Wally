@@ -1,0 +1,34 @@
+[
+  {
+    "q": "iphone 13",
+    "min": 100,
+    "max": 300,
+    "excluir": [
+      "funda",
+      "carcasa",
+      "cargador",
+      "cable",
+      "protector",
+      "piezas",
+      "averiado",
+      "roto"
+    ]
+  },
+  {
+    "q": "thinkpad",
+    "min": 20,
+    "max": 150,
+    "excluir": [
+      "cargador",
+      "bateria",
+      "teclado",
+      "piezas"
+    ]
+  },
+  {
+    "q": "RX 6800 XT",
+    "min": 250,
+    "max": 400,
+    "excluir": []
+  }
+]
