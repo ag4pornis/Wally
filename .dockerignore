@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+secrets.json
+busquedas.json
+vistos.db
+gestor.py
+runGestor.sh
+test.py
+LICENSE
+README.md
