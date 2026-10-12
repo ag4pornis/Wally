@@ -137,11 +137,16 @@ def lista_textos(txt):
 def texto_recibido(txt):
     txt = txt.strip()
     if txt.startswith("/"):
+        cmd = txt.split()[0].lower()
         estado.clear()
-        return menu()
+        if cmd in ("/menu", "/start"):
+            return menu()
+        if cmd == "/cancelar":
+            return decir("Cancelado.")
+        return
     st = estado.get("st")
     if not st:
-        return menu()
+        return
 
     if st["accion"] == "editar":
         lista = leer()
