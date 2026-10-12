@@ -11,6 +11,7 @@ PREGUNTAS = {
     "min": "Escribe el nuevo precio mínimo en € (número):",
     "max": "Escribe el nuevo precio máximo en € (número):",
     "excluir": "Escribe las palabras a excluir separadas por comas (o - para vaciar):",
+    "otros_titulos": "Escribe otros títulos alternativos separados por comas (o - para vaciar):",
 }
 
 
@@ -71,14 +72,17 @@ def ver(i, mid=None):
         return menu(mid)
     b = lista[i]
     ex = ", ".join(b.get("excluir", [])) or "—"
+    ot = ", ".join(b.get("otros_titulos", [])) or "—"
     texto = (f"🔎 <b>{html.escape(b['q'])}</b>\n"
              f"💰 {b.get('min', 0)} – {b['max']} €\n"
-             f"🚫 Excluir: {html.escape(ex)}")
+             f"🚫 Excluir: {html.escape(ex)}\n"
+             f"🅰️ Otros títulos: {html.escape(ot)}")
     botones = [
         [{"text": "✏️ Nombre", "callback_data": f"ed:q:{i}"},
          {"text": "✏️ Mín", "callback_data": f"ed:min:{i}"}],
         [{"text": "✏️ Máx", "callback_data": f"ed:max:{i}"},
          {"text": "✏️ Excluir", "callback_data": f"ed:excluir:{i}"}],
+        [{"text": "✏️ Otros títulos", "callback_data": f"ed:otros_titulos:{i}"}],
         [{"text": "🗑 Borrar", "callback_data": f"del:{i}"},
          {"text": "⬅️ Volver", "callback_data": "menu"}],
     ]
@@ -124,6 +128,12 @@ def palabras(txt):
     return [x.strip().lower() for x in txt.split(",") if x.strip()]
 
 
+def lista_textos(txt):
+    if txt == "-":
+        return []
+    return [x.strip() for x in txt.split(",") if x.strip()]
+
+
 def texto_recibido(txt):
     txt = txt.strip()
     if txt.startswith("/"):
@@ -149,6 +159,8 @@ def texto_recibido(txt):
                 lista[i][campo] = int(txt)
             except ValueError:
                 return decir("Pon un número entero.")
+        elif campo == "otros_titulos":
+            lista[i]["otros_titulos"] = lista_textos(txt)
         else:
             lista[i]["excluir"] = palabras(txt)
         guardar(lista)
@@ -173,7 +185,11 @@ def texto_recibido(txt):
             return decir("Precio máximo en €:")
         st["paso"] = "excluir"
         return decir("Palabras a excluir separadas por comas (o - para ninguna):")
-    d["excluir"] = palabras(txt)
+    if paso == "excluir":
+        d["excluir"] = palabras(txt)
+        st["paso"] = "otros_titulos"
+        return decir("Otros títulos alternativos separados por comas (o - para ninguno):")
+    d["otros_titulos"] = lista_textos(txt)
     lista = leer()
     lista.append(d)
     guardar(lista)

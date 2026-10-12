@@ -1,4 +1,4 @@
-import sqlite3, time, json, html, re, panel
+import sqlite3, time, json, html, re, unicodedata, panel
 from curl_cffi import requests
 import os
 
@@ -61,6 +61,16 @@ def precio(it):
         return float(p)
     except (TypeError, ValueError):
         return None
+
+def _clave(s):
+    # minúsculas, sin acentos y sin espacios/símbolos, para comparar títulos
+    s = unicodedata.normalize("NFKD", (s or "").lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+def coincide_titulo(titulo, terminos):
+    t = _clave(titulo)
+    return any(_clave(x) in t for x in terminos)
 
 def enviar(texto, formato=None):
     datos = {"chat_id": CHAT_ID, "text": texto}
@@ -129,8 +139,8 @@ while True:
         except Exception as e:
             print("Error:", b["q"], e)
             continue
-        c = {"vistos": 0, "nuevos": 0, "excluidos": 0, "bajo": 0,
-             "alto": 0, "silenciosos": 0, "enviados": 0}
+        c = {"vistos": 0, "nuevos": 0, "excluidos": 0, "titulo": 0,
+             "bajo": 0, "alto": 0, "silenciosos": 0, "enviados": 0}
         palabras = {}
         for it in items:
             iid = it["id"]
@@ -153,6 +163,10 @@ while True:
             if p is not None and p > b["max"]:
                 c["alto"] += 1
                 continue
+            terminos = [b["q"]] + b.get("otros_titulos", [])
+            if not coincide_titulo(it.get("title") or "", terminos):
+                c["titulo"] += 1
+                continue
             if primera and not AVISAR_EXISTENTES:
                 c["silenciosos"] += 1
                 continue
@@ -173,6 +187,7 @@ while True:
             f"🆕 Nuevos: {c['nuevos']}\n\n"
             f"🚫 <b>Descartados</b>\n"
             f"   • Por palabra: {c['excluidos']}" + (f" ({pal})" if pal else "") + "\n"
+            f"   • Por título: {c['titulo']}\n"
             f"   • Precio bajo: {c['bajo']}\n"
             f"   • Precio alto: {c['alto']}\n"
             f"🔇 Memorizados sin avisar: {c['silenciosos']}\n\n"
