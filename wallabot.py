@@ -1,8 +1,15 @@
 import sqlite3, time, json
 from curl_cffi import requests
+import os
 
-TOKEN = "TOKEN_ROTADO"
-CHAT_ID = "CHAT_ID"
+def _secretos():
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "secrets.json")
+    with open(ruta, encoding="utf-8") as f:
+        s = json.load(f)
+    return s["TOKEN"], str(s["CHAT_ID"])
+
+TOKEN, CHAT_ID = _secretos()
+
 LAT, LON = 40.4168, -3.7038   # cambia a tu zona
 INTERVALO = 120               # segundos; no bajes de 60
 PAGINAS_PRIMERA = 4   # páginas (unos 40 anuncios cada una) a leer en la primera pasada

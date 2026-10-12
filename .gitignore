@@ -1,0 +1,8 @@
+secrets.json
+.env
+venv/
+__pycache__/
+*.pyc
+vistos.db
+busquedas.json
+runGestor.sh
