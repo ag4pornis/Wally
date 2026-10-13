@@ -5,7 +5,10 @@ services:
     container_name: wally
     restart: unless-stopped
     working_dir: /app
+    environment:
+      - WALLY_DATA=/data
     volumes:
-      - /DATA/AppData/wally/secrets.json:/app/secrets.json:ro
-      - /DATA/AppData/wally/busquedas.json:/app/busquedas.json
-      - /DATA/AppData/wally/vistos.db:/app/vistos.db
+      # Una SOLA carpeta con secrets.json, busquedas.json y vistos.db.
+      # Así el guardado atómico del panel (os.replace) funciona y SQLite crea
+      # vistos.db por sí mismo (no hace falta crearlo a mano).
+      - /DATA/AppData/wally:/data

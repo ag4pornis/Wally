@@ -127,6 +127,10 @@ La comparación de títulos ignora acentos, mayúsculas y espacios:
 | `AVISAR_EXISTENTES` | `True` | Avisar también de los anuncios antiguos al añadir una búsqueda. |
 | `LAT` / `LON` | Madrid | Coordenadas para la búsqueda. |
 
+Además, la variable de entorno **`WALLY_DATA`** indica la carpeta donde viven
+`secrets.json`, `busquedas.json` y `vistos.db`. En Docker se usa `/data` (la carpeta
+montada); en local, si no se define, es la carpeta del propio script.
+
 ## Crearlo tú mismo (despliegue)
 
 ### 1. Requisitos
@@ -145,16 +149,21 @@ python -m venv venv
 
 Luego, en Telegram: `/start` o `/menu`.
 
+> Los ficheros de datos se buscan en la carpeta del script. Si quieres guardarlos
+> en otro sitio, define `WALLY_DATA=/ruta/a/mis/datos`.
+
 ### 3. Docker
 
 ```bash
 docker build -t wally:latest .
+mkdir -p /ruta/datos          # secrets.json, busquedas.json y vistos.db
 docker run -d --name wally --restart unless-stopped \
-  -v /ruta/secrets.json:/app/secrets.json:ro \
-  -v /ruta/busquedas.json:/app/busquedas.json \
-  -v /ruta/vistos.db:/app/vistos.db \
+  -e WALLY_DATA=/data \
+  -v /ruta/datos:/data \
   wally:latest
 ```
+
+`vistos.db` se crea solo en `/ruta/datos`; no hace falta crearlo a mano.
 
 ### 4. Docker Compose
 
@@ -169,8 +178,9 @@ docker compose up -d --build
 3. En CasaOS: **Install a customized app** → pega el contenido de `casaos-app.yml`.
 4. El contenedor usa `restart: unless-stopped`, así que se levanta solo tras reinicios.
 
-Los volúmenes montan `secrets.json` (solo lectura), `busquedas.json` y `vistos.db`
-dentro de `/app`, de modo que los datos viven en el servidor y no dentro de la imagen.
+El volumen monta **la carpeta** `/DATA/AppData/wally` en `/data` (`WALLY_DATA=/data`).
+Así los datos viven en el servidor y no dentro de la imagen, y el bot puede escribir
+`busquedas.json` (menú de Telegram) y crear `vistos.db` sin tocar el sistema de ficheros.
 
 ## Gestión desde Telegram
 

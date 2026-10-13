@@ -1,9 +1,15 @@
-import sqlite3, time, json, html, re, unicodedata, panel
+import sqlite3, time, json, html, re, unicodedata, os, panel
 from curl_cffi import requests
-import os
+
+# Carpeta de datos: aquí viven secrets.json, busquedas.json y vistos.db.
+# En Docker se monta UNA carpeta y se apunta con WALLY_DATA (p. ej. /data); así
+# el guardado atómico del panel funciona (no es un fichero suelto montado) y
+# SQLite puede crear vistos.db por sí mismo. En local, por defecto, la carpeta
+# del propio script.
+DATA = os.environ.get("WALLY_DATA") or os.path.dirname(os.path.abspath(__file__))
 
 def _secretos():
-    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "secrets.json")
+    ruta = os.path.join(DATA, "secrets.json")
     with open(ruta, encoding="utf-8") as f:
         s = json.load(f)
     return s["TOKEN"], str(s["CHAT_ID"])
@@ -19,7 +25,7 @@ AVISAR_EXISTENTES = True
 
 
 URL = "https://api.wallapop.com/api/v3/search"
-db = sqlite3.connect("vistos.db")
+db = sqlite3.connect(os.path.join(DATA, "vistos.db"))
 # 'vistos' es ahora por búsqueda (q, id) y solo guarda lo que se ha AVISADO.
 # Si existe el esquema viejo (solo id) lo migramos borrándolo: la siguiente
 # pasada vuelve a avisar de todos los coincidentes con la lógica nueva.
@@ -32,7 +38,7 @@ db.execute("CREATE TABLE IF NOT EXISTS iniciadas (q TEXT PRIMARY KEY)")
 db.commit()
 
 def cargar():
-    with open("busquedas.json", encoding="utf-8") as f:
+    with open(os.path.join(DATA, "busquedas.json"), encoding="utf-8") as f:
         return json.load(f)
 
 def _leer_paginas(base, paginas, solo_organic=False):

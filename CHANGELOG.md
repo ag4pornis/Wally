@@ -3,14 +3,18 @@
 Todos los cambios relevantes de Wally.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-13
 
 ### Added
 - `README.md` con arquitectura, configuración y guía de despliegue (Docker, Compose y CasaOS).
 - `CHANGELOG.md`.
 - Aviso `⚠️ Fallos de envío (se reintentan)` en el resumen.
+- Variable de entorno `WALLY_DATA` para elegir la carpeta de datos.
 
 ### Changed
+- Despliegue: en vez de montar ficheros sueltos, se monta **una sola carpeta**
+  (`/DATA/AppData/wally` → `/data`) y el código resuelve ahí `secrets.json`,
+  `busquedas.json` y `vistos.db`.
 - `vistos` pasa a ser **por búsqueda** (clave `(q, id)`) y **solo memoriza lo que se ha avisado**.
 - El resumen muestra `♻️ Ya avisados` y se envía **solo si hubo novedades** (o en la primera pasada
   de cada búsqueda). Se eliminó el contador `Nuevos`, que era engañoso.
@@ -23,6 +27,11 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.
 - Los envíos fallidos ya no se pierden: no se marcan y se reintentan en la ronda siguiente.
 - Corregido el comentario que afirmaba que la API v3 no admite `order_by="newest"`
   (sí lo admite; sin `time_filter` solo devuelve ~24 h).
+- **Añadir/editar búsquedas desde el panel ya no falla.** Al montar `busquedas.json`
+  como fichero suelto, el guardado atómico (`os.replace`) sobre un punto de montaje
+  devolvía `EBUSY` y la búsqueda nunca se guardaba.
+- **`vistos.db` ya no se crea como carpeta.** Al montar una carpeta de datos, SQLite
+  crea el fichero por sí mismo y desaparece el `unable to open database file`.
 
 ### Removed
 - El contador `🆕 Nuevos` del resumen (contaba también los anuncios descartados).

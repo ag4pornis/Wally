@@ -1,7 +1,11 @@
 import json, os, threading, time, html
 from curl_cffi import requests
 
-ARCHIVO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "busquedas.json")
+# Misma carpeta de datos que wallabot.py: configurable con WALLY_DATA y, si no,
+# la del propio script. Repetimos la línea porque importar wallabot aquí sería
+# circular.
+DATA = os.environ.get("WALLY_DATA") or os.path.dirname(os.path.abspath(__file__))
+ARCHIVO = os.path.join(DATA, "busquedas.json")
 lock = threading.Lock()
 estado = {}
 _token = _chat = ""

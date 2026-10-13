@@ -5,7 +5,8 @@ services:
     container_name: wally
     restart: unless-stopped
     working_dir: /app
+    environment:
+      - WALLY_DATA=/data
     volumes:
-      - /DATA/AppData/wally/secrets.json:/app/secrets.json:ro
-      - /DATA/AppData/wally/busquedas.json:/app/busquedas.json
-      - /DATA/AppData/wally/vistos.db:/app/vistos.db
+      # Una SOLA carpeta con secrets.json, busquedas.json y vistos.db.
+      - /DATA/AppData/wally:/data
