@@ -20,8 +20,16 @@ AVISAR_EXISTENTES = True
 
 URL = "https://api.wallapop.com/api/v3/search"
 db = sqlite3.connect("vistos.db")
-db.execute("CREATE TABLE IF NOT EXISTS vistos (id TEXT PRIMARY KEY)")
+# 'vistos' es ahora por búsqueda (q, id) y solo guarda lo que se ha AVISADO.
+# Si existe el esquema viejo (solo id) lo migramos borrándolo: la siguiente
+# pasada vuelve a avisar de todos los coincidentes con la lógica nueva.
+_columnas = [f[1] for f in db.execute("PRAGMA table_info(vistos)").fetchall()]
+if _columnas and "q" not in _columnas:
+    db.execute("DROP TABLE vistos")
+    db.execute("DROP TABLE IF EXISTS iniciadas")
+db.execute("CREATE TABLE IF NOT EXISTS vistos (q TEXT, id TEXT, PRIMARY KEY (q, id))")
 db.execute("CREATE TABLE IF NOT EXISTS iniciadas (q TEXT PRIMARY KEY)")
+db.commit()
 
 def cargar():
     with open("busquedas.json", encoding="utf-8") as f:
@@ -102,10 +110,11 @@ def enviar(texto, formato=None):
     datos = {"chat_id": CHAT_ID, "text": texto}
     if formato:
         datos["parse_mode"] = formato
-    requests.post(
+    r = requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
         json=datos, timeout=30,
     )
+    return r.status_code == 200
 
 def tiempo(it):
     ms = it.get("created_at")
@@ -142,10 +151,11 @@ def enviar_anuncio(it, p, b, link):
             "chat_id": CHAT_ID, "photo": foto, "caption": texto,
             "parse_mode": "HTML", "reply_markup": botones}, timeout=30)
         if r.status_code == 200:
-            return
-    requests.post(f"{api}/sendMessage", json={
+            return True
+    r = requests.post(f"{api}/sendMessage", json={
         "chat_id": CHAT_ID, "text": texto,
         "parse_mode": "HTML", "reply_markup": botones}, timeout=30)
+    return r.status_code == 200
 
 panel.iniciar(TOKEN, CHAT_ID)
 enviar("Bot de Wallapop arrancado. Usa /menu para gestionar tus búsquedas")
@@ -159,22 +169,22 @@ while True:
         continue
     resumenes = []
     for b in busquedas:
-        primera = db.execute("SELECT 1 FROM iniciadas WHERE q=?", (b["q"],)).fetchone() is None
+        q = b["q"]
+        primera = db.execute("SELECT 1 FROM iniciadas WHERE q=?", (q,)).fetchone() is None
         try:
             items = buscar(b, PAGINAS_PRIMERA if primera else PAGINAS_NORMAL)
         except Exception as e:
-            print("Error:", b["q"], e)
+            print("Error:", q, e)
             continue
-        c = {"vistos": 0, "nuevos": 0, "excluidos": 0, "titulo": 0,
-             "bajo": 0, "alto": 0, "silenciosos": 0, "enviados": 0}
+        c = {"vistos": 0, "excluidos": 0, "titulo": 0, "bajo": 0,
+             "alto": 0, "silenciosos": 0, "enviados": 0, "fallos": 0}
         palabras = {}
         for it in items:
             iid = it["id"]
-            if db.execute("SELECT 1 FROM vistos WHERE id=?", (iid,)).fetchone():
+            # Solo cuenta como "ya avisado" lo que de verdad se avisó (en esta búsqueda).
+            if db.execute("SELECT 1 FROM vistos WHERE q=? AND id=?", (q, iid)).fetchone():
                 c["vistos"] += 1
                 continue
-            db.execute("INSERT INTO vistos VALUES (?)", (iid,))
-            c["nuevos"] += 1
             p = precio(it)
             titulo = (it.get("title") or "").lower()
             mala = [x for x in b.get("excluir", []) if x in titulo]
@@ -189,44 +199,55 @@ while True:
             if p is not None and p > b["max"]:
                 c["alto"] += 1
                 continue
-            terminos = [b["q"]] + b.get("otros_titulos", [])
+            terminos = [q] + b.get("otros_titulos", [])
             if not coincide_titulo(it.get("title") or "", terminos):
                 c["titulo"] += 1
                 continue
             if primera and not AVISAR_EXISTENTES:
+                # Se memoriza sin avisar: no hay que volver a verlo.
+                db.execute("INSERT OR IGNORE INTO vistos VALUES (?,?)", (q, iid))
                 c["silenciosos"] += 1
                 continue
             link = f"https://es.wallapop.com/item/{it.get('web_slug') or iid}"
             try:
-                enviar_anuncio(it, p, b, link)
-                c["enviados"] += 1
+                if enviar_anuncio(it, p, b, link):
+                    db.execute("INSERT OR IGNORE INTO vistos VALUES (?,?)", (q, iid))
+                    c["enviados"] += 1
+                else:
+                    c["fallos"] += 1
+                    print("Fallo al enviar (se reintentará):", iid)
             except Exception as e:
-                print("Error enviando:", e)
+                c["fallos"] += 1
+                print("Error enviando (se reintentará):", e)
             time.sleep(1)
 
         pal = ", ".join(f"{html.escape(k)} ×{v}" for k, v in palabras.items())
         resumen = (
-            f"📊 <b>Resumen · {html.escape(b['q'])}</b>\n"
+            f"📊 <b>Resumen · {html.escape(q)}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"👀 Leídos: {len(items)}\n"
-            f"♻️ Ya vistos: {c['vistos']}\n"
-            f"🆕 Nuevos: {c['nuevos']}\n\n"
+            f"♻️ Ya avisados: {c['vistos']}\n\n"
             f"🚫 <b>Descartados</b>\n"
             f"   • Por palabra: {c['excluidos']}" + (f" ({pal})" if pal else "") + "\n"
             f"   • Por título: {c['titulo']}\n"
             f"   • Precio bajo: {c['bajo']}\n"
             f"   • Precio alto: {c['alto']}\n"
-            f"🔇 Memorizados sin avisar: {c['silenciosos']}\n\n"
-            f"✅ <b>Enviados: {c['enviados']}</b>"
+            f"🔇 Memorizados sin avisar: {c['silenciosos']}\n"
         )
+        if c["fallos"]:
+            resumen += f"⚠️ Fallos de envío (se reintentan): {c['fallos']}\n"
+        resumen += f"\n✅ <b>Enviados: {c['enviados']}</b>"
         print("\n" + html.unescape(re.sub(r"<[^>]+>", "", resumen)))
-        if c["nuevos"] > 0:
+        # Avisa del resumen si hubo envíos, o siempre en la primera pasada
+        # (para saber que la búsqueda existe aunque no dé resultados).
+        if c["enviados"] > 0 or primera:
             resumenes.append(resumen)
-        db.execute("INSERT OR IGNORE INTO iniciadas VALUES (?)", (b["q"],))
+        db.execute("INSERT OR IGNORE INTO iniciadas VALUES (?)", (q,))
         db.commit()
     for resumen in resumenes:
         try:
-            enviar(resumen, "HTML")
+            if not enviar(resumen, "HTML"):
+                print("Fallo al enviar el resumen")
         except Exception as e:
             print("Error enviando resumen:", e)
     time.sleep(INTERVALO)
