@@ -12,7 +12,9 @@ TOKEN, CHAT_ID = _secretos()
 
 LAT, LON = 40.4168, -3.7038   # cambia a tu zona
 INTERVALO = 120               # segundos; no bajes de 60
-PAGINAS_PRIMERA = 4   # páginas (unos 40 anuncios cada una) a leer en la primera pasada
+PAGINAS_PRIMERA = 12  # páginas de most_relevance en la primera pasada (cubre todos los coincidentes)
+PAGINAS_NORMAL = 4    # páginas de most_relevance en rondas normales
+PAGINAS_NEWEST = 4    # páginas de la red de seguridad (newest + time_filter)
 AVISAR_EXISTENTES = True
 
 
@@ -25,14 +27,9 @@ def cargar():
     with open("busquedas.json", encoding="utf-8") as f:
         return json.load(f)
 
-def buscar(b, paginas=1):
-    # OJO: la API v3 NO admite order_by="newest" (devuelve casi nada).
-    # Valores válidos: most_relevance, closest, price_low_to_high, price_high_to_low.
-    # Usamos most_relevance y ordenamos por fecha en Python.
-    base = {"keywords": b["q"], "order_by": "most_relevance",
-            "source": "search_box", "latitude": LAT, "longitude": LON,
-            "min_sale_price": b.get("min", 0),
-            "max_sale_price": b["max"]}
+def _leer_paginas(base, paginas, solo_organic=False):
+    # Lee hasta 'paginas' páginas de la API. Con solo_organic se detiene al
+    # cambiar de sección: 'newest' mete ruido de 'similar_items_search_results'.
     params = dict(base)
     items, ids = [], set()
     for _ in range(paginas):
@@ -40,8 +37,10 @@ def buscar(b, paginas=1):
                          impersonate="chrome", timeout=30)
         r.raise_for_status()
         j = r.json()
-        pagina = j["data"]["section"]["payload"]["items"]
-        nuevos = [it for it in pagina if it["id"] not in ids]
+        seccion = j["data"]["section"]
+        if solo_organic and seccion.get("type") != "organic_search_results":
+            break
+        nuevos = [it for it in seccion["payload"]["items"] if it["id"] not in ids]
         if not nuevos:
             break  # la página no aportó nada nuevo
         items += nuevos
@@ -51,8 +50,35 @@ def buscar(b, paginas=1):
             break
         params = {**base, "next_page": nxt}
         time.sleep(1)
-    items.sort(key=lambda it: it.get("created_at") or 0, reverse=True)
     return items
+
+def buscar(b, paginas=1):
+    # La API v3 SÍ admite order_by="newest"; pero sin time_filter solo devuelve
+    # ~24 h (era el bug del "solo 1 anuncio"). Estrategia doble:
+    #   1) most_relevance -> catálogo completo (anuncios antiguos Y nuevos)
+    #   2) newest + lastWeek -> red de seguridad para recién publicados,
+    #      leyendo solo la sección orgánica (el resto es ruido "similar")
+    comunes = {
+        "keywords": b["q"],
+        "source": "search_box",
+        "latitude": LAT,
+        "longitude": LON,
+        "min_sale_price": b.get("min", 0),
+        "max_sale_price": b["max"],
+    }
+    items = _leer_paginas({**comunes, "order_by": "most_relevance"}, paginas)
+    items += _leer_paginas(
+        {**comunes, "order_by": "newest", "time_filter": "lastWeek"},
+        PAGINAS_NEWEST, solo_organic=True,
+    )
+    # fusionar y quitar duplicados por id
+    unicos, ids = [], set()
+    for it in items:
+        if it["id"] not in ids:
+            ids.add(it["id"])
+            unicos.append(it)
+    unicos.sort(key=lambda it: it.get("created_at") or 0, reverse=True)
+    return unicos
 
 def precio(it):
     p = it.get("price")
@@ -135,7 +161,7 @@ while True:
     for b in busquedas:
         primera = db.execute("SELECT 1 FROM iniciadas WHERE q=?", (b["q"],)).fetchone() is None
         try:
-            items = buscar(b, PAGINAS_PRIMERA if primera else 1)
+            items = buscar(b, PAGINAS_PRIMERA if primera else PAGINAS_NORMAL)
         except Exception as e:
             print("Error:", b["q"], e)
             continue
